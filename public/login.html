@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<h1>Dashboard</h1>
+
+
+<div class="card">
+<h3>Adauga cont Minecraft</h3>
+<input id="username" placeholder="Username" />
+<input id="password" placeholder="Password" />
+<input id="host" placeholder="Server IP" />
+<input id="port" placeholder="Port" value="25565" />
+<input id="version" placeholder="Version" />
+<button onclick="addBot()">Connect Bot</button>
+</div>
+
+
+<div class="card">
+<h3>Chat Control</h3>
+<select id="botSelect"></select>
+<input id="message" placeholder="Mesaj" />
+<button onclick="sendMessage()">Send</button>
+<button onclick="broadcast()">Broadcast</button>
+</div>
+
+
+<div class="card">
+<h3>Chat Live</h3>
+<ul id="chat"></ul>
+</div>
+</div>
+
+
+<script>
+const socket = io();
+
+
+socket.on("bots", (bots) => {
+const select = document.getElementById("botSelect");
+select.innerHTML="";
+bots.forEach(b=>{
+const opt=document.createElement("option");
+opt.value=b;opt.textContent=b;select.appendChild(opt);
+});
+});
+
+
+socket.on("chat", ({username,message})=>{
+const li=document.createElement("li");
+li.textContent=username+": "+message;
+document.getElementById("chat").appendChild(li);
+});
+
+
+function addBot(){
+socket.emit("add-bot",{
+username:username.value,
+password:password.value,
+host:host.value,
+port:port.value,
+version:version.value
+})
+}
+
+
+function sendMessage(){
+socket.emit("send-message",{username:botSelect.value,message:message.value})
+}
+
+
+function broadcast(){
+socket.emit("broadcast",message.value)
+}
+</script>
+</body>
+</html>
