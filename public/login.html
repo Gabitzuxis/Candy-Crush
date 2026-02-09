@@ -5,57 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - MC Bot Manager</title>
     <link rel="stylesheet" href="css/style_dashboard.css">
-    <style>
-        /* Stiluri extra doar pentru Login (centrare) */
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
-        }
-        
-        .auth-card {
-            background: rgba(20, 20, 20, 0.9);
-            border: 1px solid var(--neon-green);
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.1);
-            padding: 40px;
-            border-radius: 15px;
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-            backdrop-filter: blur(10px);
-        }
-
-        .logo-login {
-            font-size: 2rem;
-            color: var(--neon-green);
-            margin-bottom: 20px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            text-shadow: 0 0 10px var(--neon-green);
-        }
-
-        .toggle-btn {
-            background: none;
-            border: none;
-            color: #888;
-            cursor: pointer;
-            margin-top: 15px;
-            font-size: 0.9rem;
-            text-decoration: underline;
-        }
-        .toggle-btn:hover { color: white; }
-
-        .error-msg {
-            color: var(--danger);
-            margin-top: 10px;
-            font-size: 0.9rem;
-            display: none;
-        }
-    </style>
 </head>
-<body>
-
+<body class="login-body">
     <div class="auth-card">
         <div class="logo-login">MC MANAGER</div>
         <h3 id="form-title" style="color: white; margin-bottom: 20px;">Autentificare</h3>
@@ -63,25 +14,20 @@
         <form id="auth-form">
             <input type="text" id="username" placeholder="Username" required autocomplete="off">
             <input type="password" id="password" placeholder="Parola" required>
-            
             <button type="submit" class="btn" style="width: 100%; margin-top: 20px;">INTRĂ ÎN CONT</button>
         </form>
 
         <p id="error-text" class="error-msg"></p>
-
         <button class="toggle-btn" onclick="toggleMode()">Nu ai cont? Creează unul</button>
     </div>
 
     <script>
         let isLogin = true;
-
         function toggleMode() {
             isLogin = !isLogin;
             const title = document.getElementById('form-title');
             const btn = document.querySelector('.toggle-btn');
             const submitBtn = document.querySelector('.btn');
-            const errorText = document.getElementById('error-text');
-
             if (isLogin) {
                 title.innerText = "Autentificare";
                 submitBtn.innerText = "INTRĂ ÎN CONT";
@@ -91,18 +37,15 @@
                 submitBtn.innerText = "CREEAZĂ CONT";
                 btn.innerText = "Ai deja cont? Loghează-te";
             }
-            errorText.style.display = 'none';
+            document.getElementById('error-text').style.display = 'none';
         }
 
         document.getElementById('auth-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const errorText = document.getElementById('error-text');
-            
-            // Alegem ruta în funcție de mod (Login sau Register)
             const endpoint = isLogin ? '/api/login' : '/api/register';
+            const errorText = document.getElementById('error-text');
 
             try {
                 const res = await fetch(endpoint, {
@@ -110,30 +53,19 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
-
                 const data = await res.json();
-
                 if (data.success) {
-                    if (isLogin) {
-                        // Dacă login-ul e ok, mergem la Dashboard
-                        window.location.href = '/dashboard.html'; 
-                    } else {
-                        // Dacă înregistrarea e ok, trecem pe login
-                        alert("Cont creat cu succes! Acum te poți loga.");
-                        toggleMode();
-                    }
+                    if (isLogin) window.location.href = '/dashboard.html';
+                    else { alert("Cont creat!"); toggleMode(); }
                 } else {
-                    // Afișăm eroarea
-                    errorText.innerText = data.message || "A apărut o eroare.";
+                    errorText.innerText = data.message || "Eroare necunoscută";
                     errorText.style.display = 'block';
                 }
             } catch (err) {
-                console.error(err);
                 errorText.innerText = "Eroare de conexiune la server.";
                 errorText.style.display = 'block';
             }
         });
     </script>
-
 </body>
 </html>
