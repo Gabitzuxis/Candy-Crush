@@ -128,6 +128,8 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(3000, () => {
-    console.log('MC Bot Manager running on http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log(`Serverul ruleaza pe portul ${PORT}`);
 });
