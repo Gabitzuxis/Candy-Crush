@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <title>MC Bot Manager Pro</title>
+    <link rel="stylesheet" href="css/style_dashboard.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <div class="logo">MC MANAGER</div>
+        <div class="menu-item active" onclick="showSection('dashboard')">📊 Dashboard</div>
+        <div class="menu-item" onclick="showSection('accounts')">➕ Accounts</div>
+        <div class="menu-item" onclick="showSection('accessibility')">🎮 Accessibility</div>
+        <div class="menu-item" onclick="showSection('settings')">⚙️ Settings</div>
+        <div style="margin-top: auto; padding: 15px;">
+            <a href="/logout" style="color: var(--danger); text-decoration: none;">🚪 Logout</a>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        
+        <div id="dashboard" class="section active">
+            <h2>Panou de Control</h2>
+            <div class="stats-grid">
+                <div class="card">
+                    <h3>Conturi Totale</h3>
+                    <h1 id="total-bots">0</h1>
+                </div>
+                <div class="card">
+                    <h3>Boți Online</h3>
+                    <h1 id="online-bots" style="color: var(--neon-green)">0</h1>
+                </div>
+            </div>
+        </div>
+
+        <div id="accounts" class="section">
+            <h2>Adaugă Bot Nou</h2>
+            <div class="card" style="max-width: 500px;">
+                <form id="add-bot-form">
+                    <label>Nickname</label>
+                    <input type="text" name="nickname" required placeholder="Ex: SteveBot01">
+                    
+                    <label>Server IP</label>
+                    <input type="text" name="server_ip" required placeholder="Ex: play.hypixel.net">
+                    
+                    <label>Versiune (Opțional)</label>
+                    <input type="text" name="version" placeholder="Lasă gol pentru auto-detect">
+                    
+                    <label>Proxy (Opțional)</label>
+                    <input type="text" name="proxy" placeholder="ip:port">
+                    
+                    <label>Mesaj Automat (Join)</label>
+                    <input type="text" name="auto_msg" placeholder="/login parola123">
+                    
+                    <button type="submit" class="btn">Salvează Contul</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="accessibility" class="section">
+            <h2>Control Boți</h2>
+            <p>Click pe un card pentru a deschide consola.</p>
+            <div id="bots-list" class="bot-grid">
+                </div>
+        </div>
+
+        <div id="settings" class="section">
+            <h2>Setări Aplicație</h2>
+            <div class="card">
+                <label>Temă Interfață</label>
+                <button class="btn" onclick="toggleTheme()">Schimbă Light/Dark Mode</button>
+            </div>
+        </div>
+    </main>
+
+    <div id="chat-modal" class="modal">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between;">
+                <h3 id="modal-bot-name">Bot Console</h3>
+                <button onclick="closeModal()" style="background:none; border:none; color:red; cursor:pointer;">X</button>
+            </div>
+            <div id="chat-logs"></div>
+            <div style="display:flex; gap:10px;">
+                <input type="text" id="cmd-input" placeholder="Scrie o comandă sau chat...">
+                <button class="btn" onclick="sendCommand()">Trimite</button>
+            </div>
+            <div style="margin-top: 10px; display:flex; gap:10px;">
+                <button class="btn" onclick="startBotCurrent()" style="background: var(--neon-green)">START</button>
+                <button class="btn" onclick="stopBotCurrent()" style="background: var(--danger); color:white;">STOP</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentBotId = null;
+
+        // Navigare
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            // Găsește butonul corect pentru active class (simplificat)
+        }
+
+        // Theme Toggle
+        function toggleTheme() {
+            const body = document.body;
+            const current = body.getAttribute('data-theme');
+            body.setAttribute('data-theme', current === 'light' ? 'dark' : 'light');
+        }
+
+        // Load Bots
+        async function loadBots() {
+            const res = await fetch('/api/bots');
+            const bots = await res.json();
+            const list = document.getElementById('bots-list');
+            list.innerHTML = '';
+            
+            let onlineCount = 0;
+            document.getElementById('total-bots').innerText = bots.length;
+
+            bots.forEach(bot => {
+                if(bot.isOnline) onlineCount++;
+                const div = document.createElement('div');
+                div.className = `bot-card ${bot.isOnline ? 'online' : ''}`;
+                div.innerHTML = `
+                    <h3>${bot.nickname}</h3>
+                    <p>${bot.server_ip} (${bot.version || 'Auto'})</p>
+                    <span class="bot-status" style="color:${bot.isOnline ? 'var(--neon-green)' : 'gray'}">
+                        ${bot.isOnline ? '● ONLINE' : '○ OFFLINE'}
+                    </span>
+                `;
+                div.onclick = () => openConsole(bot.id, bot.nickname);
+                list.appendChild(div);
+            });
+            document.getElementById('online-bots').innerText = onlineCount;
+        }
+
+        // Add Bot
+        document.getElementById('add-bot-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            await fetch('/api/bots', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            alert('Bot adăugat!');
+            e.target.reset();
+            loadBots();
+        });
+
+        // Console Logic
+        function openConsole(id, name) {
+            currentBotId = id;
+            document.getElementById('modal-bot-name').innerText = `Consolă: ${name}`;
+            document.getElementById('chat-logs').innerHTML = ''; // Clear old logs
+            document.getElementById('chat-modal').style.display = 'flex';
+        }
+        function closeModal() {
+            document.getElementById('chat-modal').style.display = 'none';
+            currentBotId = null;
+            loadBots(); // Refresh status
+        }
+
+        // Bot Control
+        async function startBotCurrent() {
+            if(!currentBotId) return;
+            await fetch('/api/bots/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: currentBotId})
+            });
+            addLog("Se încearcă conectarea...");
+        }
+
+        async function stopBotCurrent() {
+            if(!currentBotId) return;
+            await fetch('/api/bots/stop', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: currentBotId})
+            });
+        }
+
+        function sendCommand() {
+            const input = document.getElementById('cmd-input');
+            const command = input.value;
+            if(currentBotId && command) {
+                socket.emit('send-command', { botId: currentBotId, command });
+                input.value = '';
+            }
+        }
+
+        function addLog(msg) {
+            const logs = document.getElementById('chat-logs');
+            const p = document.createElement('div');
+            p.className = 'log-line';
+            p.innerText = msg;
+            logs.appendChild(p);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        // Socket Events
+        socket.on('bot-log', (data) => {
+            if(data.id === currentBotId) {
+                addLog(data.msg);
+            }
+        });
+
+        socket.on('bot-status', () => {
+            loadBots(); // Refresh grid if status changes
+        });
+
+        // Init
+        loadBots();
+        setInterval(loadBots, 10000); // Auto refresh la 10 secunde
+    </script>
+</body>
+</html>
