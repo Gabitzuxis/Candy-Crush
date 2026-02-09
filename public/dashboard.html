@@ -95,92 +95,161 @@
 
     <script>
         const socket = io();
-        let currentBotId = null;
+        let currentBotId = null; // Reține ID-ul botului selectat
 
-        // Navigare
+        // --- 1. NAVIGARE UI ---
         function showSection(id) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
             document.getElementById(id).classList.add('active');
-            // Găsește butonul corect pentru active class (simplificat)
         }
 
-        // Theme Toggle
         function toggleTheme() {
             const body = document.body;
             const current = body.getAttribute('data-theme');
             body.setAttribute('data-theme', current === 'light' ? 'dark' : 'light');
         }
 
-        // Load Bots
+        // --- 2. GESTIONARE LISTA BOȚI ---
         async function loadBots() {
-            const res = await fetch('/api/bots');
-            const bots = await res.json();
-            const list = document.getElementById('bots-list');
-            list.innerHTML = '';
-            
-            let onlineCount = 0;
-            document.getElementById('total-bots').innerText = bots.length;
+            try {
+                const res = await fetch('/api/bots');
+                const bots = await res.json();
+                
+                const list = document.getElementById('bots-list'); // Gridul de la Accessibility
+                list.innerHTML = '';
+                
+                let onlineCount = 0;
+                document.getElementById('total-bots').innerText = bots.length;
 
-            bots.forEach(bot => {
-                if(bot.isOnline) onlineCount++;
-                const div = document.createElement('div');
-                div.className = `bot-card ${bot.isOnline ? 'online' : ''}`;
-                div.innerHTML = `
-                    <h3>${bot.nickname}</h3>
-                    <p>${bot.server_ip} (${bot.version || 'Auto'})</p>
-                    <span class="bot-status" style="color:${bot.isOnline ? 'var(--neon-green)' : 'gray'}">
-                        ${bot.isOnline ? '● ONLINE' : '○ OFFLINE'}
-                    </span>
-                `;
-                div.onclick = () => openConsole(bot.id, bot.nickname);
-                list.appendChild(div);
-            });
-            document.getElementById('online-bots').innerText = onlineCount;
+                bots.forEach(bot => {
+                    if(bot.isOnline) onlineCount++;
+                    
+                    const div = document.createElement('div');
+                    div.className = `bot-card ${bot.isOnline ? 'online' : ''}`;
+                    div.innerHTML = `
+                        <h3>${bot.nickname}</h3>
+                        <p>${bot.server_ip}</p>
+                        <span class="bot-status" style="color:${bot.isOnline ? 'var(--neon-green)' : 'gray'}">
+                            ${bot.isOnline ? '● ONLINE' : '○ OFFLINE'}
+                        </span>
+                        <div style="margin-top:10px; font-size:0.8rem; color:#888;">Click pentru Consolă</div>
+                    `;
+                    // Când dai click pe cartonaș, deschide consola acelui bot
+                    div.onclick = () => openConsole(bot.id, bot.nickname);
+                    list.appendChild(div);
+                });
+                
+                document.getElementById('online-bots').innerText = onlineCount;
+            } catch (err) {
+                console.error("Eroare la încărcarea boților:", err);
+            }
         }
 
-        // Add Bot
-        document.getElementById('add-bot-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const data = Object.fromEntries(formData.entries());
-            
-            await fetch('/api/bots', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            alert('Bot adăugat!');
-            e.target.reset();
-            loadBots();
-        });
+        // --- 3. LOGICA DE CONSOLĂ ȘI CHAT ---
 
-        // Console Logic
+        // Deschide fereastra (Modal)
         function openConsole(id, name) {
-            currentBotId = id;
+            currentBotId = id; // Setăm botul activ
             document.getElementById('modal-bot-name').innerText = `Consolă: ${name}`;
-            document.getElementById('chat-logs').innerHTML = ''; // Clear old logs
+            document.getElementById('chat-logs').innerHTML = ''; // Curățăm chatul vechi
             document.getElementById('chat-modal').style.display = 'flex';
+            
+            addLog("System", "Conectat la panoul de control al botului. Aștept mesaje...");
         }
+
+        // Închide fereastra
         function closeModal() {
             document.getElementById('chat-modal').style.display = 'none';
-            currentBotId = null;
-            loadBots(); // Refresh status
+            currentBotId = null; // Nu mai ascultăm chatul acestui bot
+            loadBots(); // Dăm refresh la status
         }
 
-        // Bot Control
+        // --- 4. TRIMITERE ȘI PRIMIRE MESAJE ---
+
+        // Funcție ajutătoare pentru a adăuga text în fereastra neagră
+        function addLog(user, msg) {
+            const logs = document.getElementById('chat-logs');
+            const p = document.createElement('div');
+            p.className = 'log-line';
+            
+            // Colorăm diferit mesajele tale vs ale altora
+            if (user === 'Tu') {
+                p.style.color = 'cyan';
+                p.innerHTML = `> <b>${user}:</b> ${msg}`;
+            } else if (user === 'System') {
+                p.style.color = 'yellow';
+                p.innerHTML = `<i>[SYS]: ${msg}</i>`;
+            } else {
+                p.innerHTML = `<span style="color: lime;">[${user}]</span>: ${msg}`;
+            }
+
+            logs.appendChild(p);
+            // AUTO-SCROLL: Mereu jos
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        // A. PRIMIRE MESAJE (De la Server -> Site)
+        socket.on('bot-log', (data) => {
+            // Afișăm mesajul doar dacă avem deschisă consola botului respectiv
+            if (currentBotId && data.id === currentBotId) {
+                // Backend-ul trimite formatul "msg: [Nume]: Mesaj" sau erori
+                // Facem o curățare simplă
+                let message = data.msg;
+                let user = "Server";
+
+                // Încercăm să detectăm cine a scris
+                if (message.startsWith('[')) {
+                    // Dacă mesajul e de tipul "[Steve]: Salut"
+                    // Îl afișăm direct
+                    const logs = document.getElementById('chat-logs');
+                    const p = document.createElement('div');
+                    p.className = 'log-line';
+                    p.innerText = message; 
+                    logs.appendChild(p);
+                    logs.scrollTop = logs.scrollHeight;
+                } else {
+                    addLog("Info", message);
+                }
+            }
+        });
+
+        // B. TRIMITERE MESAJE (De la Site -> Server -> Minecraft)
+        function sendCommand() {
+            const input = document.getElementById('cmd-input');
+            const command = input.value;
+            
+            if (currentBotId && command) {
+                // Trimitem prin Socket către server.js
+                socket.emit('send-command', { botId: currentBotId, command: command });
+                
+                // Afișăm ce am scris și noi în consolă
+                addLog("Tu", command);
+                input.value = ''; // Golim căsuța
+            }
+        }
+
+        // Permite trimiterea cu tasta ENTER
+        document.getElementById('cmd-input').addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                sendCommand();
+            }
+        });
+
+        // --- 5. CONTROL START/STOP ---
         async function startBotCurrent() {
             if(!currentBotId) return;
+            addLog("System", "Se inițiază conectarea...");
             await fetch('/api/bots/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({id: currentBotId})
             });
-            addLog("Se încearcă conectarea...");
         }
 
         async function stopBotCurrent() {
             if(!currentBotId) return;
+            addLog("System", "Se trimite comanda de deconectare...");
             await fetch('/api/bots/stop', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -188,38 +257,27 @@
             });
         }
 
-        function sendCommand() {
-            const input = document.getElementById('cmd-input');
-            const command = input.value;
-            if(currentBotId && command) {
-                socket.emit('send-command', { botId: currentBotId, command });
-                input.value = '';
-            }
-        }
-
-        function addLog(msg) {
-            const logs = document.getElementById('chat-logs');
-            const p = document.createElement('div');
-            p.className = 'log-line';
-            p.innerText = msg;
-            logs.appendChild(p);
-            logs.scrollTop = logs.scrollHeight;
-        }
-
-        // Socket Events
-        socket.on('bot-log', (data) => {
-            if(data.id === currentBotId) {
-                addLog(data.msg);
-            }
-        });
-
+        // Socket listener pentru update-uri globale de status
         socket.on('bot-status', () => {
-            loadBots(); // Refresh grid if status changes
+            loadBots(); 
         });
 
-        // Init
+        // Adăugare Bot Nou (Formular)
+        document.getElementById('add-bot-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            await fetch('/api/bots', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            alert('Bot salvat!');
+            e.target.reset();
+            loadBots();
+        });
+
+        // Inițializare
         loadBots();
-        setInterval(loadBots, 10000); // Auto refresh la 10 secunde
+        setInterval(loadBots, 5000); // Refresh la lista de boți la 5 secunde
     </script>
-</body>
-</html>
