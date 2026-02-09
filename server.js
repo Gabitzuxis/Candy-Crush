@@ -136,8 +136,15 @@ app.post('/api/bots/start', (req, res) => {
                 }
             });
 
-            bot.on('chat', (username, message) => {
-                io.emit('bot-log', { id: id, msg: `[${username}]: ${message}` });
+            bot.on('message', (jsonMsg) => {
+                // Convertim mesajul complex (JSON) în text citibil
+                const message = jsonMsg.toString();
+                
+                // Trimitem către Dashboard
+                io.emit('bot-log', { id: id, msg: message });
+                
+                // (Opțional) Vedem și în consola Render pentru debug
+                console.log(`[MC-CHAT]: ${message}`);
             });
 
             bot.on('end', () => {
@@ -188,3 +195,4 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`MC Manager running on port ${PORT}`);
 });
+
